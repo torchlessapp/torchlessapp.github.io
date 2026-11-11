@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.brickandsignal.torchless",
+      "sha256_cert_fingerprints": [
+        "C2:18:07:78:D8:CF:E3:04:7D:14:DC:D5:98:8F:43:E5:94:43:70:A3:B4:6F:67:1E:1A:8F:65:E1:0C:D0:BB:34"
+      ]
+    }
+  }
+]
