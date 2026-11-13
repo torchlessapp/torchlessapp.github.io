@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Move my jars</title>
+<style>
+  body { margin: 0; background: #060708; color: #e8e8e8; font: 16px/1.45 system-ui, sans-serif; padding: 32px 20px; }
+  h1 { font-size: 26px; letter-spacing: 1px; margin: 0 0 8px; }
+  p { color: #b9bec4; }
+  button { display: block; width: 100%; min-height: 54px; margin-top: 14px; border-radius: 14px; border: 1px solid #E8B24A; background: #E8B24A; color: #1A1004; font: 700 18px system-ui; letter-spacing: 1px; }
+  button.ghost { background: transparent; color: #E8B24A; }
+  #say { margin-top: 18px; color: #19E3FF; min-height: 1.4em; }
+</style></head>
+<body>
+<h1>MOVE MY JARS</h1>
+<p>Torchless moved to <b>torchless.brickandsignal.com</b>. Your jars are still saved under the old address on this phone. Tap below to bring them over.</p>
+<p id="count">Looking for your jars…</p>
+<button id="go" disabled>MOVE MY JARS</button>
+<button id="plainB" class="ghost" hidden>TRY ANOTHER WAY</button>
+<button id="file" class="ghost" hidden>SAVE A BACKUP FILE</button>
+<p id="say"></p>
+<script>
+// Runs on the old origin (torchlessapp.github.io), which still holds the jars in IndexedDB "torchless-jars".
+// Nothing here deletes or changes the old data.
+const NEW = "https://torchless.brickandsignal.com/";
+const $ = id => document.getElementById(id);
+const say = t => { $("say").textContent = t; };
+function idb() { return new Promise((res, rej) => { const r = indexedDB.open("torchless-jars"); r.onupgradeneeded = () => { r.transaction.abort(); rej(new Error("none")); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+function get(db, store, key) { return new Promise((res, rej) => { if (!db.objectStoreNames.contains(store)) return res(undefined); const q = db.transaction(store).objectStore(store).get(key); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+function dataURL(v) { return new Promise(res => { const b = v instanceof Blob ? v : new Blob([v.data], { type: v.type || "image/jpeg" }); const f = new FileReader(); f.onload = () => res(f.result); f.readAsDataURL(b); }); }
+let text = null, jarsOnly = null, n = 0;
+(async () => {
+  try {
+    const db = await idb();
+    const jars = (await get(db, "kv", "jars")) || [];
+    n = jars.length;
+    if (!n) { $("count").textContent = "No jars found under the old address on this phone. Open this page in the same browser you used before (Bluefy on iPhone)."; return; }
+    const photos = {};
+    for (const j of jars) for (const k of [j.photo, ...(j.morePhotos || [])].filter(Boolean)) { const v = await get(db, "photos", k); if (v) photos[k] = await dataURL(v); }
+    let cur = null; try { cur = localStorage.getItem("torchless.currentJar"); } catch {}
+    const base = { app: "Torchless", kind: "jars", version: 1, saved: new Date().toISOString(), currentJar: cur, jars };
+    text = JSON.stringify({ ...base, photos });
+    jarsOnly = JSON.stringify({ ...base, photos: {} });
+    $("count").textContent = `Found ${n} jar${n === 1 ? "" : "s"} and ${Object.keys(photos).length} photo${Object.keys(photos).length === 1 ? "" : "s"}.`;
+    $("go").disabled = false; $("file").hidden = false;
+  } catch { $("count").textContent = "No jars found under the old address on this phone."; }
+})();
+// Way 1: open the new app and hand the jars over (postMessage needs no size limit).
+let win = null, done = false;
+addEventListener("message", e => {
+  if (e.origin !== NEW.slice(0, -1)) return;
+  if (e.data && e.data.t === "rescue-ready" && text) e.source.postMessage({ t: "rescue-data", text }, e.origin);
+  if (e.data && e.data.t === "rescue-done") { done = true; say(`Done. ${e.data.n} jar${e.data.n === 1 ? "" : "s"} moved. You can close this tab.`); }
+});
+$("go").onclick = () => {
+  say("Opening Torchless…");
+  win = window.open(NEW + "#rescue", "_blank");
+  setTimeout(() => { if (!done) { $("plainB").hidden = false; say("Didn't hear back. Tap TRY ANOTHER WAY."); } }, 6000);
+};
+// Way 2: carry the jars in the address itself (photos too if they fit).
+$("plainB").onclick = () => {
+  const full = encodeURIComponent(text), small = encodeURIComponent(jarsOnly);
+  const pick = full.length < 1500000 ? full : small;
+  if (pick === small) say("Photos are too big to carry this way. Jars move now; save a backup file for the photos.");
+  location.href = NEW + "#rescue-data=" + pick;
+};
+// Way 3: a backup file (share sheet, or a download), restored in the app under JARS > Backup > Restore.
+$("file").onclick = async () => {
+  const f = new File([text], `Torchless-jars-${new Date().toISOString().slice(0, 10)}.json`, { type: "application/json" });
+  try { if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f] }); return; } } catch {}
+  const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.append(a); a.click();
+};
+</script>
+</body></html>
